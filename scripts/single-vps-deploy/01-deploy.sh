@@ -47,6 +47,14 @@ cd /root
 git clone https://github.com/MinBZK/mijn-bureau-infra
 cd mijn-bureau-infra
 
+# Apply our local patches over the vendored MinBZK infra (Keep Office branding, etc.).
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+for p in "${REPO_ROOT}"/patches/local/*.patch; do
+  [ -e "$p" ] || continue
+  echo "==> Applying local patch: $(basename "$p")"
+  git apply "$p"
+done
+
 cat > helmfile/environments/demo/mijnbureau.yaml.gotmpl <<YAML
 ---
 global:

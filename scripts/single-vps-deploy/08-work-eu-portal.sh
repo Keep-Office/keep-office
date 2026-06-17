@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # Usage: ./08-work-eu-portal.sh
-# work-eu layer on top of the MinBZK base (scripts 01-07):
-#   - builds our patched bureaublad backend (CalDAV fixes) and frontend
-#     (upcoming-events Calendar widget) from pinned upstream source + overlays
+# Keep Office portal layer on top of the MinBZK base (scripts 01-07):
+#   - builds our Keep Office portal backend (CalDAV fixes) and frontend
+#     (Keep Office branding + upcoming-events Calendar widget) from our fork
 #   - installs the Nextcloud Calendar app
 #   - wires the portal's calendar to Nextcloud CalDAV
+#
+# The portal source is our detached fork Keep-Office/keep-office-portal, which
+# already carries the changes that used to live in overlays/bureaublad.
 #
 # Idempotent and safe to re-run. Reads the domain from /etc/mijnbureau/domain.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-OVERLAY="${REPO_ROOT}/overlays/bureaublad"
-BUREAUBLAD_REF="${BUREAUBLAD_REF:-v0.9.3}"
+PORTAL_REPO="${PORTAL_REPO:-https://github.com/Keep-Office/keep-office-portal}"
+PORTAL_REF="${PORTAL_REF:-main}"
+# Base image for the backend: pinned upstream API so we only override the one
+# patched file and avoid lockfile drift from a full source build.
 BACKEND_BASE_IMAGE="${BACKEND_BASE_IMAGE:-ghcr.io/minbzk/bureaublad-api:v0.9.3}"
 BUILDX_VERSION="${BUILDX_VERSION:-v0.19.3}"
 
@@ -26,32 +30,29 @@ if ! docker buildx version >/dev/null 2>&1; then
   chmod +x ~/.docker/cli-plugins/docker-buildx
 fi
 
-echo "==> [2/7] Fetching bureaublad source @ ${BUREAUBLAD_REF} and applying overlays"
+echo "==> [2/7] Fetching Keep Office portal source (${PORTAL_REPO}@${PORTAL_REF})"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
-git clone --depth 1 --branch "${BUREAUBLAD_REF}" https://github.com/MinBZK/bureaublad "${WORK}/bureaublad"
-# Overlay our patched/added files (carry-and-upstream: these become PRs upstream).
-cp -a "${OVERLAY}/backend/." "${WORK}/bureaublad/backend/"
-cp -a "${OVERLAY}/frontend/." "${WORK}/bureaublad/frontend/"
+git clone --depth 1 --branch "${PORTAL_REF}" "${PORTAL_REPO}" "${WORK}/portal"
 
 echo "==> [3/7] Building backend image (overlay on ${BACKEND_BASE_IMAGE} to avoid lockfile drift)"
 cat > "${WORK}/Dockerfile.backend" <<EOF
 FROM ${BACKEND_BASE_IMAGE}
 COPY backend/app/clients/caldav.py /app/app/clients/caldav.py
 EOF
-docker buildx build --load -f "${WORK}/Dockerfile.backend" -t work-eu/bureaublad-api:local "${WORK}/bureaublad"
-docker save work-eu/bureaublad-api:local | k3s ctr -n k8s.io images import -
+docker buildx build --load -f "${WORK}/Dockerfile.backend" -t keep-office/portal-api:local "${WORK}/portal"
+docker save keep-office/portal-api:local | k3s ctr -n k8s.io images import -
 
-echo "==> [4/7] Building frontend image from source + overlay"
-docker buildx build --load -t work-eu/bureaublad-frontend:local "${WORK}/bureaublad/frontend"
-docker save work-eu/bureaublad-frontend:local | k3s ctr -n k8s.io images import -
+echo "==> [4/7] Building frontend image from our fork"
+docker buildx build --load -t keep-office/portal-frontend:local "${WORK}/portal/frontend"
+docker save keep-office/portal-frontend:local | k3s ctr -n k8s.io images import -
 
 echo "==> [5/7] Pointing portal deployments at our images"
 kubectl -n mb-bureaublad patch deploy bureaublad-backend --type=json -p='[
-  {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"work-eu/bureaublad-api:local"},
+  {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"keep-office/portal-api:local"},
   {"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
 kubectl -n mb-bureaublad patch deploy bureaublad-frontend --type=json -p='[
-  {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"work-eu/bureaublad-frontend:local"},
+  {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"keep-office/portal-frontend:local"},
   {"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
 
 echo "==> [6/7] Installing the Nextcloud Calendar app"
@@ -69,4 +70,4 @@ kubectl -n mb-bureaublad rollout status deploy/bureaublad-backend --timeout=120s
 kubectl -n mb-bureaublad rollout status deploy/bureaublad-frontend --timeout=180s
 
 echo ""
-echo "work-eu portal + calendar live at https://bureaublad.${DOMAIN}"
+echo "Keep Office portal + calendar live at https://bureaublad.${DOMAIN}"
