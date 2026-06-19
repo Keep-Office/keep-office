@@ -30,6 +30,13 @@ NC="https://nextcloud.${DOMAIN}/remote.php/dav"
 CAL="${NC}/calendars/${NC_LOGIN}/personal"
 FILES="${NC}/files/${NC_LOGIN}"
 
+# Opinionation: Nextcloud is files + Collabora office only. La Suite Docs is the
+# single block editor, so disable Nextcloud Text — otherwise opening a file in
+# Nextcloud presents a second, competing notes editor. (Idempotent.)
+echo "==> Enforcing one block editor (disable Nextcloud Text)"
+kubectl -n mb-nextcloud exec deploy/nextcloud -c nextcloud -- \
+  sh -c "cd /var/www/html && php occ app:disable text" >/dev/null 2>&1 || true
+
 echo "==> [1/3] Calendar — upcoming events"
 # Fixed UIDs so re-runs replace (no duplicates); dates relative to today so they
 # always stay in the near future.
@@ -58,26 +65,7 @@ put_event demo-standup-os    1 09 1 "Team standup"
 put_event demo-review-os      3 14 1 "Q3 deck review with Jane"
 put_event demo-1on1-os        5 11 1 "1:1 — John & Jane"
 
-echo "==> [2/3] Files — recent documents"
-put_file() { # path, content
-  local enc; enc=$(printf '%s' "$1" | sed 's/ /%20/g')
-  curl -fsS -u "${NC_LOGIN}:${NC_PASS}" -X PUT "${FILES}/${enc}" --data-binary "$2" >/dev/null && echo "    + $1"
-}
-put_file "Welcome to Open Suite.md" "# Welcome to Open Suite
-
-Your self-hosted digital workplace. Files, office, chat, calendar and more — one login."
-put_file "Q3 plan.md" "# Q3 plan
-
-- Ship Open Suite 1.0
-- Onboard pilot teams
-- Publish the deploy guide"
-put_file "Meeting notes.md" "# Meeting notes
-
-- Reviewed the Q3 deck
-- Action: Jane to finalise slides
-- Next sync: after standup"
-
-echo "==> [3/4] Docs — La Suite documents"
+echo "==> [2/3] Docs — La Suite documents"
 # La Suite Docs is OIDC-native; mint johndoe a token via Keycloak direct-access
 # grant on the docs client (ensure that grant is enabled first).
 DOCS_CID=$(kubectl -n mb-keycloak get secret keycloak-keycloak-config-cli -o jsonpath="{.data.MB_CLIENT_SECRET_DOCS}" | base64 -d)
@@ -110,7 +98,7 @@ else
   echo "    !! could not obtain a Docs token — skipping"
 fi
 
-echo "==> [4/4] Chat — Jane & John thread"
+echo "==> [3/3] Chat — Jane ↔ John direct message"
 SYN=$(kubectl -n mb-element get pods -o name | grep -i "synapse-" | grep -iv keygen | head -1)
 kubectl -n mb-element exec "${SYN}" -c synapse -- sh -c '
 set -e
@@ -118,24 +106,28 @@ B=http://localhost:8448
 SERVER=matrix.demo.opensuite.online
 JOHN=@johndoe:$SERVER; JANE=@janedoe:$SERVER
 AT="Authorization: Bearer syt_seedadmintokenjohn0001"
-# Skip if the demo room already exists in Johns joined rooms.
-EXISTS=$(curl -s "$B/_matrix/client/v3/joined_rooms" -H "$AT" | python3 -c "import json,sys
-try:
-  rooms=json.load(sys.stdin).get(\"joined_rooms\",[])
-except Exception: rooms=[]
-print(len(rooms))")
-if [ "${EXISTS:-0}" -ge 1 ]; then echo "    chat room already present (rooms=$EXISTS) — skipping"; exit 0; fi
+# Idempotent: skip if John already has a DM with Jane (m.direct account data).
+HAS=$(curl -s "$B/_matrix/client/v3/user/$JOHN/account_data/m.direct" -H "$AT" | python3 -c "import json,sys
+try: d=json.load(sys.stdin)
+except Exception: d={}
+print(\"yes\" if isinstance(d,dict) and d.get(\"$JANE\") else \"no\")")
+if [ "$HAS" = "yes" ]; then echo "    DM already present — skipping"; exit 0; fi
+# Ensure Jane exists and get her token.
 curl -s -X PUT "$B/_synapse/admin/v2/users/$JANE" -H "$AT" -H "Content-Type: application/json" -d "{\"displayname\":\"Jane Doe\"}" >/dev/null
 JT=$(curl -s -X POST "$B/_synapse/admin/v1/users/$JANE/login" -H "$AT" -H "Content-Type: application/json" -d "{}" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"access_token\"])")
-RID=$(curl -s -X POST "$B/_matrix/client/v3/createRoom" -H "$AT" -H "Content-Type: application/json" -d "{\"name\":\"Jane & John\",\"invite\":[\"$JANE\"],\"preset\":\"private_chat\"}" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"room_id\"])")
+# Create a real DM: no name, is_direct, so clients show it as the other person.
+RID=$(curl -s -X POST "$B/_matrix/client/v3/createRoom" -H "$AT" -H "Content-Type: application/json" -d "{\"is_direct\":true,\"invite\":[\"$JANE\"],\"preset\":\"trusted_private_chat\"}" | python3 -c "import json,sys;print(json.load(sys.stdin)[\"room_id\"])")
+# Mark it as a direct message for both users so it renders as a DM.
+curl -s -X PUT "$B/_matrix/client/v3/user/$JOHN/account_data/m.direct" -H "$AT" -H "Content-Type: application/json" -d "{\"$JANE\":[\"$RID\"]}" >/dev/null
 curl -s -X POST "$B/_matrix/client/v3/rooms/$RID/join" -H "Authorization: Bearer $JT" >/dev/null
+curl -s -X PUT "$B/_matrix/client/v3/user/$JANE/account_data/m.direct" -H "Authorization: Bearer $JT" -H "Content-Type: application/json" -d "{\"$JOHN\":[\"$RID\"]}" >/dev/null
 i=0
 snd(){ i=$((i+1)); curl -s -X PUT "$B/_matrix/client/v3/rooms/$RID/send/m.room.message/seed$i" -H "$1" -H "Content-Type: application/json" -d "{\"msgtype\":\"m.text\",\"body\":\"$2\"}" >/dev/null; }
 snd "$AT" "Hi Jane, did you get the Q3 deck?"
 snd "Authorization: Bearer $JT" "Hey John, yes reviewing it now."
 snd "$AT" "Great, lets sync after standup."
 snd "Authorization: Bearer $JT" "Works for me, see you at 10."
-echo "    seeded chat thread"
+echo "    seeded DM thread"
 '
 
 echo "==> Demo data seeded."
