@@ -78,6 +78,10 @@
       // and push content down, since our bar replaces that nav entirely.
       "html.ko-on-bridge .ant-layout-header{display:none !important;}",
       "html.ko-on-bridge body{padding-top:" + HEADER_HEIGHT + "px !important;}",
+      // Element fills the viewport (#matrixchat = 100vh) and puts controls at the
+      // very top, which the overlay would cover — push it below the bar and
+      // shrink it so nothing (room search, message composer) is hidden or cut.
+      "html.ko-on-element #matrixchat{margin-top:" + HEADER_HEIGHT + "px !important;height:calc(100vh - " + HEADER_HEIGHT + "px) !important;}",
       // Nextcloud Calendar's new-event popover sizes its max-height as
       // (100vh - its top), but NC's own 50px header offsets the real top, so the
       // popover renders ~50px too tall and its footer (Save) falls off-screen.
@@ -138,6 +142,8 @@
     // On the bridge portal, take over from its built-in nav (hide it + offset).
     if (host.indexOf("bridge.") === 0) {
       document.documentElement.classList.add("ko-on-bridge");
+    } else if (host.indexOf("element.") === 0) {
+      document.documentElement.classList.add("ko-on-element");
     }
 
     var bar = document.createElement("nav");
