@@ -39,6 +39,7 @@ echo "==> [3/7] Building backend image (overlay on ${BACKEND_BASE_IMAGE} to avoi
 cat > "${WORK}/Dockerfile.backend" <<EOF
 FROM ${BACKEND_BASE_IMAGE}
 COPY backend/app/clients/caldav.py /app/app/clients/caldav.py
+COPY backend/app/models/calendar.py /app/app/models/calendar.py
 EOF
 docker buildx build --load -f "${WORK}/Dockerfile.backend" -t open-suite/portal-api:local "${WORK}/portal"
 docker save open-suite/portal-api:local | k3s ctr -n k8s.io images import -
