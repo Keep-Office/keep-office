@@ -135,6 +135,9 @@ for k in ("creationTimestamp","resourceVersion","uid","managedFields","generatio
 print(json.dumps(o))
 ' | kubectl apply -f -
 
+# ConfigMap is mounted via subPath, which doesn't hot-reload — restart so the
+# pod always picks up the current nginx.conf / header on a re-run.
+kubectl -n mb-nextcloud rollout restart deploy/nextcloud
 kubectl -n mb-nextcloud rollout status deploy/nextcloud --timeout=180s
 
 echo "==> [3/3] Done — Keep Office header injected across apps"
