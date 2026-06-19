@@ -67,6 +67,11 @@ kubectl -n mb-bureaublad set env deploy/bureaublad-backend \
   TASK_URL="https://nextcloud.${DOMAIN}" \
   TASK_AUDIENCE=nextcloud
 
+# The image tag (:local) doesn't change between builds, so patching the deploy
+# is a no-op and won't restart the pods onto the freshly-imported image. Force
+# a restart so the new build is actually picked up.
+kubectl -n mb-bureaublad rollout restart deploy/bureaublad-backend deploy/bureaublad-frontend
+
 kubectl -n mb-bureaublad rollout status deploy/bureaublad-backend --timeout=120s
 kubectl -n mb-bureaublad rollout status deploy/bureaublad-frontend --timeout=180s
 
