@@ -139,8 +139,9 @@ patch_static mb-meet    meet-static-files
 patch_static mb-element element-web-bureaublad-button
 
 echo "==> [2/2] Sidecar apps"
-add_sidecar mb-nextcloud nextcloud     nextcloud     8080 nextcloud
-add_sidecar mb-grist     grist         grist         8484 grist
-add_sidecar mb-docs      docs-frontend docs-frontend 8080 docs-frontend
+add_sidecar mb-nextcloud  nextcloud           nextcloud           8080 nextcloud
+add_sidecar mb-grist      grist               grist               8484 grist
+add_sidecar mb-docs       docs-frontend       docs-frontend       8080 docs-frontend
+add_sidecar mb-bureaublad bureaublad-frontend bureaublad-frontend 8080 bureaublad-frontend
 
 echo "==> Done — Open Suite header injected across apps"

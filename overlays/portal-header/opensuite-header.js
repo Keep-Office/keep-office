@@ -72,8 +72,12 @@
       "#" + HEADER_ID + " .ko-item.ko-open .ko-menu{display:flex;}",
       "#" + HEADER_ID + " .ko-menu a{color:#cdd6e0;text-decoration:none;padding:8px 10px;border-radius:6px;white-space:nowrap;}",
       "#" + HEADER_ID + " .ko-menu a:hover{background:rgba(255,255,255,.10);color:#fff;}",
-      // Push the page down so the fixed header never covers app chrome.
-      "html.ko-has-header{margin-top:" + HEADER_HEIGHT + "px !important;}",
+      // The bar overlays the top of apps (no document offset), so full-height
+      // apps like Nextcloud Calendar keep their full viewport and their popovers
+      // aren't clipped. On the bridge portal we instead hide its built-in nav
+      // and push content down, since our bar replaces that nav entirely.
+      "html.ko-on-bridge .ant-layout-header{display:none !important;}",
+      "html.ko-on-bridge body{padding-top:" + HEADER_HEIGHT + "px !important;}",
     ].join("");
     document.head.appendChild(s);
   }
@@ -125,7 +129,10 @@
     if (document.getElementById(HEADER_ID)) return;
     if (!document.body) return;
     injectStyles();
-    document.documentElement.classList.add("ko-has-header");
+    // On the bridge portal, take over from its built-in nav (hide it + offset).
+    if (host.indexOf("bridge.") === 0) {
+      document.documentElement.classList.add("ko-on-bridge");
+    }
 
     var bar = document.createElement("nav");
     bar.id = HEADER_ID;
