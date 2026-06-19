@@ -1,5 +1,5 @@
 /*
- * Keep Office portal header — the single, shared top navigation.
+ * Open Suite portal header — the single, shared top navigation.
  *
  * Injected same-origin into every surface (the bridge portal itself, plus
  * Nextcloud, Meet, Element, Docs, Grist, ...) so navigation is identical
@@ -23,7 +23,7 @@
   var HEADER_ID = "ko-portal-header";
   var HEADER_HEIGHT = 48; // px
 
-  // host = "meet.keepoffice.ritzademo.com" -> base = "keepoffice.ritzademo.com"
+  // host = "meet.opensuite.ritzademo.com" -> base = "opensuite.ritzademo.com"
   var host = window.location.hostname;
   var base = host.indexOf(".") === -1 ? host : host.slice(host.indexOf(".") + 1);
   var origin = function (sub) { return window.location.protocol + "//" + sub + "." + base; };
@@ -133,7 +133,7 @@
     var brand = document.createElement("a");
     brand.className = "ko-brand";
     brand.href = origin("bridge");
-    brand.innerHTML = '<span class="ko-mark">K</span><span>Keep Office</span>';
+    brand.innerHTML = '<span class="ko-mark">O</span><span>Open Suite</span>';
     bar.appendChild(brand);
 
     NAV.forEach(function (item) { bar.appendChild(buildItem(item)); });

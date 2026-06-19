@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Usage: ./09-portal-header.sh
 #
-# Injects the shared Keep Office portal header (overlays/portal-header/
-# keepoffice-header.js) into every app so direct (non-portal) navigation still
-# shows the Keep Office top bar. ONE asset, served same-origin everywhere.
+# Injects the shared Open Suite portal header (overlays/portal-header/
+# opensuite-header.js) into every app so direct (non-portal) navigation still
+# shows the Open Suite top bar. ONE asset, served same-origin everywhere.
 #
 # Two delivery paths, by how each app is served:
 #   - Static SPAs that already inject a same-origin `<script src=
@@ -19,7 +19,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-HEADER_JS="${REPO_ROOT}/overlays/portal-header/keepoffice-header.js"
+HEADER_JS="${REPO_ROOT}/overlays/portal-header/opensuite-header.js"
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 SIDECAR_PORT=8091
 
@@ -69,9 +69,9 @@ http {
   server {
     listen ${SIDECAR_PORT};
     client_max_body_size 0;
-    location = /keepoffice-header.js {
+    location = /opensuite-header.js {
       default_type application/javascript;
-      alias /usr/share/keepoffice/keepoffice-header.js;
+      alias /usr/share/opensuite/opensuite-header.js;
     }
     location / {
       proxy_pass http://127.0.0.1:${upstream};
@@ -82,32 +82,32 @@ http {
       proxy_set_header Accept-Encoding "";   # so sub_filter can rewrite the body
       proxy_read_timeout 300s;
       proxy_redirect off;
-      sub_filter '</body>' '<script nonce="\$ko_nonce" src="/keepoffice-header.js"></script></body>';
+      sub_filter '</body>' '<script nonce="\$ko_nonce" src="/opensuite-header.js"></script></body>';
       sub_filter_once on;
     }
   }
 }
 NGINX
 )
-  local cm="keepoffice-${deploy}-hdr"
+  local cm="opensuite-${deploy}-hdr"
   python3 - "$ns" "$cm" "$HEADER_JS" "$conf" <<'PY' | kubectl apply -f -
 import json, sys
 ns, cm, jspath, conf = sys.argv[1:5]
 print(json.dumps({"apiVersion":"v1","kind":"ConfigMap",
   "metadata":{"name":cm,"namespace":ns},
-  "data":{"nginx.conf":conf,"keepoffice-header.js":open(jspath).read()}}))
+  "data":{"nginx.conf":conf,"opensuite-header.js":open(jspath).read()}}))
 PY
 
   kubectl -n "$ns" patch deploy "$deploy" --type strategic -p "{
     \"spec\":{\"template\":{\"spec\":{
-      \"volumes\":[{\"name\":\"keepoffice-header\",\"configMap\":{\"name\":\"${cm}\"}}],
+      \"volumes\":[{\"name\":\"opensuite-header\",\"configMap\":{\"name\":\"${cm}\"}}],
       \"containers\":[{
-        \"name\":\"keepoffice-header\",
+        \"name\":\"opensuite-header\",
         \"image\":\"nginxinc/nginx-unprivileged:1.27-alpine\",
         \"ports\":[{\"containerPort\":${SIDECAR_PORT}}],
         \"volumeMounts\":[
-          {\"name\":\"keepoffice-header\",\"mountPath\":\"/etc/nginx/nginx.conf\",\"subPath\":\"nginx.conf\"},
-          {\"name\":\"keepoffice-header\",\"mountPath\":\"/usr/share/keepoffice/keepoffice-header.js\",\"subPath\":\"keepoffice-header.js\"}
+          {\"name\":\"opensuite-header\",\"mountPath\":\"/etc/nginx/nginx.conf\",\"subPath\":\"nginx.conf\"},
+          {\"name\":\"opensuite-header\",\"mountPath\":\"/usr/share/opensuite/opensuite-header.js\",\"subPath\":\"opensuite-header.js\"}
         ]
       }]
     }}}}"
@@ -143,4 +143,4 @@ add_sidecar mb-nextcloud nextcloud     nextcloud     8080 nextcloud
 add_sidecar mb-grist     grist         grist         8484 grist
 add_sidecar mb-docs      docs-frontend docs-frontend 8080 docs-frontend
 
-echo "==> Done — Keep Office header injected across apps"
+echo "==> Done — Open Suite header injected across apps"
