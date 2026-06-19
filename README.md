@@ -1,4 +1,4 @@
-# open-suite
+# Open Suite
 
 An opinionated, self-hostable digital workplace for European public-sector and
 privacy-conscious orgs — assembled from best-in-class open-source apps (the
