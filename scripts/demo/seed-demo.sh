@@ -54,17 +54,29 @@ MEET_TOK=$(curl -fsS --max-time 20 -X POST "https://id.${DOMAIN}/realms/mijnbure
   -d username=johndoe -d password="${DEMO_PASS}" -d scope=openid \
   | python3 -c "import json,sys;print(json.load(sys.stdin).get('access_token',''))")
 
-# Create (idempotently) a Meet room for an event and echo its slug.
+# Create (idempotently) a Meet room for an event and echo its slug. On a re-run
+# the room already exists (La Suite 400s with a slug error list), so fall back
+# to looking the room up by name to get its real slug.
 meet_slug() {
   local resp slug
   resp=$(curl -s --max-time 20 -X POST "https://meet.${DOMAIN}/api/v1.0/rooms/" \
     -H "Authorization: Bearer ${MEET_TOK}" -H "Content-Type: application/json" \
     -d "{\"name\":\"$1\"}")
   slug=$(printf '%s' "$resp" | python3 -c "import json,sys
-try: print(json.load(sys.stdin).get('slug',''))
-except Exception: print('')")
-  # On re-run the room already exists; La Suite slugifies the name, so derive it.
-  [ -n "$slug" ] || slug=$(printf '%s' "$1" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9][^a-z0-9]*/-/g; s/^-//; s/-$//')
+try:
+    s = json.load(sys.stdin).get('slug')
+    print(s if isinstance(s, str) else '')
+except Exception:
+    print('')")
+  if [ -z "$slug" ]; then
+    slug=$(curl -s --max-time 20 "https://meet.${DOMAIN}/api/v1.0/rooms/?page_size=200" \
+      -H "Authorization: Bearer ${MEET_TOK}" | python3 -c "import json,sys
+name = sys.argv[1]
+try: d = json.load(sys.stdin)
+except Exception: d = {}
+rooms = d.get('results', []) if isinstance(d, dict) else (d or [])
+print(next((r.get('slug','') for r in rooms if r.get('name') == name), ''))" "$1")
+  fi
   printf '%s' "$slug"
 }
 
