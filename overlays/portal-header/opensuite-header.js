@@ -28,9 +28,17 @@
   var base = host.indexOf(".") === -1 ? host : host.slice(host.indexOf(".") + 1);
   var origin = function (sub) { return window.location.protocol + "//" + sub + "." + base; };
 
-  // Office dropdown deep-links into Nextcloud (the "ocs"/office service).
+  // Office dropdown deep-links into Nextcloud. The office overview app (stock
+  // `nextcloud/office`) has no router — it always lives at `/apps/office/` and
+  // tracks the open section (Documents/Spreadsheets/…) in a Vue ref with no URL
+  // representation. We give each section a stable `#<slug>` and select it from
+  // the hash below (syncOfficeSection), so these become real, shareable links.
+  // The slug must equal the section's sidebar label, lower-cased.
   var OFFICE_CHILDREN = [
-    { label: "Office", path: "/apps/office/" },
+    { label: "Documents", path: "/apps/office/#documents" },
+    { label: "Spreadsheets", path: "/apps/office/#spreadsheets" },
+    { label: "Presentations", path: "/apps/office/#presentations" },
+    { label: "Diagrams", path: "/apps/office/#diagrams" },
     { label: "Files", path: "/apps/files/files" },
     { label: "Contacts", path: "/apps/contacts" },
     { label: "Projects", path: "/apps/deck/" },
@@ -171,6 +179,74 @@
     mount();
   }
   setInterval(mount, 1500);
+})();
+
+/*
+ * Office overview ↔ URL hash.
+ *
+ * The stock `nextcloud/office` overview app has no router: the open section
+ * (Documents / Spreadsheets / Presentations / Diagrams) is in-component Vue
+ * state with no URL representation, so the page is always `/apps/office/#`
+ * and a section can't be linked to. Rather than fork and rebuild the app, we
+ * make the URL hash the source of truth: `#spreadsheets` selects the matching
+ * sidebar entry, and clicking a section in the sidebar writes the hash back.
+ * This is what makes the Office dropdown's `#<slug>` deep links work.
+ *
+ * Matched by the section's (English) sidebar label; a localized instance would
+ * need the slugs mapped per locale.
+ */
+(function () {
+  if (window.self !== window.top) return;
+  if (window.location.pathname.indexOf("/apps/office") !== 0) return;
+
+  function slugOf(el) { return (el.textContent || "").trim().toLowerCase(); }
+
+  function navItems() {
+    var nav = document.getElementById("app-navigation-vue");
+    return nav ? nav.querySelectorAll('li[class*="app-navigation-entry"]') : [];
+  }
+
+  // Select the section named by the hash, retrying while the sidebar (which
+  // renders only after the app's async template fetch) comes up.
+  function applyFromHash() {
+    var want = (window.location.hash || "").replace(/^#\/?/, "").trim().toLowerCase();
+    if (!want) return;
+    var tries = 0;
+    (function attempt() {
+      var items = navItems();
+      for (var i = 0; i < items.length; i++) {
+        if (slugOf(items[i]) === want) {
+          // Already active → leave it, so we don't loop click→hashchange→click.
+          if (items[i].className.indexOf("active") === -1) {
+            (items[i].querySelector("a") || items[i]).click();
+          }
+          return;
+        }
+      }
+      if (tries++ < 40) setTimeout(attempt, 150); // up to ~6s for first paint
+    })();
+  }
+
+  // Mirror sidebar clicks into the hash so the URL reflects the open section
+  // (shareable, back-button friendly). replaceState (not `location.hash =`)
+  // so we don't fire our own hashchange and re-click what was just clicked.
+  function watchClicks() {
+    var nav = document.getElementById("app-navigation-vue");
+    if (!nav || nav.dataset.osHashBound) return;
+    nav.dataset.osHashBound = "1";
+    nav.addEventListener("click", function (e) {
+      var li = e.target.closest && e.target.closest('li[class*="app-navigation-entry"]');
+      if (!li || !nav.contains(li)) return;
+      var slug = slugOf(li);
+      if (slug && "#" + slug !== window.location.hash) {
+        history.replaceState(null, "", "#" + slug);
+      }
+    });
+  }
+
+  window.addEventListener("hashchange", applyFromHash);
+  applyFromHash();
+  setInterval(watchClicks, 1000);
 })();
 
 /*
