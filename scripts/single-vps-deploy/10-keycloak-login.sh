@@ -285,8 +285,14 @@ DEMO_ADMIN_USERNAME="$1"
 DEMO_ADMIN_PASSWORD="$(cat)"
 KC=/opt/bitnami/keycloak/bin/kcadm.sh
 CFG=/tmp/kc.config
+# First run: admin still has the bootstrap password. Re-runs: this script
+# already rotated admin to the demo-admin password (when the demo admin IS
+# admin), so bootstrap fails invalid_grant. Probe which state the box is in.
 PW=$(cat "$KC_BOOTSTRAP_ADMIN_PASSWORD_FILE")
-"$KC" config credentials --config "$CFG" --server http://localhost:8080/ --realm master --user admin --password "$PW" >/dev/null
+if ! "$KC" config credentials --config "$CFG" --server http://localhost:8080/ --realm master --user admin --password "$PW" >/dev/null 2>&1; then
+  PW="$DEMO_ADMIN_PASSWORD"
+  "$KC" config credentials --config "$CFG" --server http://localhost:8080/ --realm master --user admin --password "$PW" >/dev/null
+fi
 if ! "$KC" get users --config "$CFG" -r master -q "username=${DEMO_ADMIN_USERNAME}" -q exact=true --fields username \
     | grep -q "\"${DEMO_ADMIN_USERNAME}\""; then
   "$KC" create users --config "$CFG" -r master \
