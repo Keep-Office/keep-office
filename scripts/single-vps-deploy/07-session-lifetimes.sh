@@ -22,12 +22,18 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 echo "==> [7] Widening Keycloak session lifetimes on the mijnbureau realm"
 KC_PASS=$(kubectl get secret keycloak-keycloak -n mb-keycloak -o jsonpath='{.data.admin-password}' | base64 -d)
-TOKEN=$(curl -s "https://id.${DOMAIN}/realms/master/protocol/openid-connect/token" \
-  -d grant_type=password -d client_id=admin-cli -d username=admin -d "password=${KC_PASS}" \
+# Password arrives via stdin (--data-urlencode password@-), never argv; -fsS
+# makes a non-2xx token response fail the script instead of yielding an empty
+# token.
+TOKEN=$(printf '%s' "${KC_PASS}" \
+  | curl -fsS "https://id.${DOMAIN}/realms/master/protocol/openid-connect/token" \
+      -d grant_type=password -d client_id=admin-cli -d username=admin \
+      --data-urlencode password@- \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
-curl -s -X PUT "https://id.${DOMAIN}/admin/realms/mijnbureau" \
+HTTP_CODE=$(curl -fsS -o /dev/null -w '%{http_code}' -X PUT "https://id.${DOMAIN}/admin/realms/mijnbureau" \
   -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
-  -d '{"accessTokenLifespan":1800,"ssoSessionIdleTimeout":604800,"ssoSessionMaxLifespan":2592000,"rememberMe":true}'
+  -d '{"accessTokenLifespan":1800,"ssoSessionIdleTimeout":604800,"ssoSessionMaxLifespan":2592000,"rememberMe":true}')
+echo "realm update: HTTP ${HTTP_CODE}"
 
 echo ""
 echo "Done. New sessions use the longer lifetimes (existing sessions keep their old ones)."

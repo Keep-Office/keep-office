@@ -28,17 +28,24 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 wait_for_certs() {
   echo "==> Waiting for TLS certificates"
   sleep 30
-  local prev=-1 stable=0 total ready
-  while :; do
+  # Bounded: 80 iterations x 15s = 20 minutes, far beyond a healthy Let's
+  # Encrypt issuance. Timing out means DNS/ingress/issuer is broken — fail
+  # loudly instead of polling forever.
+  local prev=-1 stable=0 total ready i
+  for i in $(seq 1 80); do
     total=$(kubectl get certificate -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
     ready=$(kubectl get certificate -A --no-headers 2>/dev/null | awk '$3=="True"' | wc -l | tr -d ' ')
     echo "  certificates ready: ${ready}/${total}"
     if [ "${total}" -gt 0 ] && [ "${total}" -eq "${ready}" ]; then
-      if [ "${total}" -eq "${prev}" ]; then stable=$((stable + 1)); [ "${stable}" -ge 2 ] && break
+      if [ "${total}" -eq "${prev}" ]; then stable=$((stable + 1)); [ "${stable}" -ge 2 ] && return 0
       else stable=0; fi
     else stable=0; fi
     prev="${total}"; sleep 15
   done
+  echo "ERROR: certificates not all ready after 20 minutes." >&2
+  echo "Check: kubectl get certificate -A; kubectl describe clusterissuer letsencrypt-prod;" >&2
+  echo "DNS for *.${DOMAIN} must point at this box and port 80/443 must be reachable." >&2
+  return 1
 }
 
 bash "${DIR}/01-deploy.sh"            "${DOMAIN}" "${EMAIL}" "${MASTER_PASSWORD}"
