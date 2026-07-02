@@ -18,6 +18,9 @@ PORTAL_REF="${PORTAL_REF:-67c6685dd4ed6095e2ae339354e1ef3ac0d12983}"
 # Base image for the backend: pinned upstream API so we only override the one
 # patched file and avoid lockfile drift from a full source build.
 BACKEND_BASE_IMAGE="${BACKEND_BASE_IMAGE:-ghcr.io/minbzk/bureaublad-api:v0.9.3}"
+# Frontend is prebuilt by the portal repo's publish-images workflow; the sha-
+# tag matches the short SHA of PORTAL_REF, so the two pins move together.
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/open-suite/portal-frontend:sha-${PORTAL_REF:0:7}}"
 BUILDX_VERSION="${BUILDX_VERSION:-v0.19.3}"
 
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -39,6 +42,8 @@ trap 'rm -rf "${WORK}"' EXIT
 git clone "${PORTAL_REPO}" "${WORK}/portal"
 git -C "${WORK}/portal" checkout -q "${PORTAL_REF}"
 
+# Backend is still an on-box overlay build (uv.lock drift blocks a source
+# build; ticket 3.2 moves it into the fork + CI).
 echo "==> [3/7] Building backend image (overlay on ${BACKEND_BASE_IMAGE} to avoid lockfile drift)"
 cat > "${WORK}/Dockerfile.backend" <<EOF
 FROM ${BACKEND_BASE_IMAGE}
@@ -50,17 +55,15 @@ EOF
 docker buildx build --load -f "${WORK}/Dockerfile.backend" -t open-suite/portal-api:local "${WORK}/portal"
 docker save open-suite/portal-api:local | k3s ctr -n k8s.io images import -
 
-echo "==> [4/7] Building frontend image from our fork"
-docker buildx build --load -t open-suite/portal-frontend:local "${WORK}/portal/frontend"
-docker save open-suite/portal-frontend:local | k3s ctr -n k8s.io images import -
+echo "==> [4/7] Using prebuilt frontend image ${FRONTEND_IMAGE}"
 
 echo "==> [5/7] Pointing portal deployments at our images"
 kubectl -n mb-bureaublad patch deploy bureaublad-backend --type=json -p='[
   {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"open-suite/portal-api:local"},
   {"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
-kubectl -n mb-bureaublad patch deploy bureaublad-frontend --type=json -p='[
-  {"op":"replace","path":"/spec/template/spec/containers/0/image","value":"open-suite/portal-frontend:local"},
-  {"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
+kubectl -n mb-bureaublad patch deploy bureaublad-frontend --type=json -p="[
+  {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/image\",\"value\":\"${FRONTEND_IMAGE}\"},
+  {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/imagePullPolicy\",\"value\":\"IfNotPresent\"}]"
 
 echo "==> [6/7] Installing the Nextcloud apps (calendar, deck, contacts)"
 # deck backs the "Projects" claim on the landing page; contacts backs the
@@ -78,10 +81,12 @@ kubectl -n mb-bureaublad set env deploy/bureaublad-backend \
   TASK_URL="https://nextcloud.${DOMAIN}" \
   TASK_AUDIENCE=nextcloud
 
-# The image tag (:local) doesn't change between builds, so patching the deploy
-# is a no-op and won't restart the pods onto the freshly-imported image. Force
-# a restart so the new build is actually picked up.
-kubectl -n mb-bureaublad rollout restart deploy/bureaublad-backend deploy/bureaublad-frontend
+# The backend tag (:local) doesn't change between builds, so patching the
+# deploy is a no-op and won't restart the pods onto the freshly-imported
+# image. Force a restart so the new build is actually picked up. (The
+# frontend's sha-pinned tag changes with PORTAL_REF, so its patch above
+# triggers its own rollout when the pin moves.)
+kubectl -n mb-bureaublad rollout restart deploy/bureaublad-backend
 
 kubectl -n mb-bureaublad rollout status deploy/bureaublad-backend --timeout=120s
 kubectl -n mb-bureaublad rollout status deploy/bureaublad-frontend --timeout=180s
