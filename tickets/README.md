@@ -2,6 +2,19 @@
 
 One file per ticket, derived from FABLE-PLAN (itself derived from FABLE-REVIEW). Numbering matches the plan.
 
+## Status ledger (updated 2026-07-02)
+
+Done and merged: 0.1 (#29), 0.2+0.3 (#30), 0.4 (#31), 1.1 (#32), 1.2 (#40), 1.3 (#41), 1.4 (#33), 1.5 (portal #20, already on main), 1.6 (#34), 1.7 (verified: all four PRs #24–27 merged, Meet patch applies at v1.20.0, scripts renumbered — 12 auth-gate, 13 meet-frontend), 2.1 (#37), 2.2 (#35), 2.4 (#36), 2.5 (portal #25), 2.6 (#39), 4.4 (docs #1).
+
+Partial / blocked — read the ticket file's "Status" footer before picking up:
+- 2.3 — blocked, premise false. meetcal endpoint needs an interactive OIDC session; app-password calls get 401 no_token. Options recorded on ticket. No further work unless the approach changes.
+- 3.1 — auth-gate slice (3.1a) done and CI-verified green (#43). BLOCKER: the `ghcr.io/open-suite/auth-gate` package is private — org owner must make it public (or add a pull secret) before the auth-gate deploy pulls. Portal + meet-frontend on-box builds still remain and fold in with 3.2.
+- 3.5 — script-hygiene half done (#42, targeted restarts + name-based service patch). Declarative-sidecar half remains; needs a chart patch + a live `helmfile apply` (maintenance window on the demo).
+
+Not started: 3.2, 3.3, 3.4, 3.6, 4.1, 4.2, 4.3, 4.5, 4.6.
+
+Standing item (not a ticket): merged fixes 0.1 / 0.2+0.3 / 2.1 / 2.6 change deploy-time behaviour but were not applied to the live demo box — they take effect on the next full `deploy.sh` re-run. 0.4 and 1.3 were verified live; two stale never-expiring Synapse admin tokens were deleted from the live DB during 0.4.
+
 Rules for the executing agent:
 
 - One ticket = one branch = one PR-sized change. Do not bundle tickets.
@@ -9,7 +22,14 @@ Rules for the executing agent:
 - PRs on `open-suite/*` repos may be opened without asking; anything touching the live server (95.217.109.206) must be reported before and after.
 - Each ticket lists `Touches` (files it edits) and `Conflicts with` (tickets sharing those files). Two tickets that conflict must not be worked in parallel — pick one, land it, rebase the other.
 
-## Parallelization waves
+## Recommended next order (remaining work)
+
+1. 3.4 — move script mutations into patches/values. Independent, several small PRs (one per script: 03, 05, 06, 07, 12-ingress-annotations). Deps (1.3) landed. No live apply needed to author; verification is a `helmfile apply` on the box.
+2. Phase 4 docs, all independent and low-risk: 4.1 (README + deploy.sh header), 4.2 (both CLAUDE.mds), 4.3 (docs/PLAN.md status), 4.5 (landing page / Deck install), 4.6 (git hygiene sweep). Phase 1 is done so these describe the fixed state.
+3. 3.2 / 3.3 / 3.6 and the rest of 3.1 — the heavy structural work. 3.2 (backend overlay in fork) needs the uv.lock fix first; 3.3 (meetcal image overlay) and 3.6 (smoke test) both want 3.1's registry images. Sequence: unblock GHCR visibility → finish 3.1 (portal + meet images) → 3.2 → 3.3 → 3.6.
+4. 3.5 declarative half — chart-patch the sidecar; needs a demo maintenance window.
+
+## Parallelization waves (original plan)
 
 Tickets in the same wave touch disjoint files and can run concurrently.
 
