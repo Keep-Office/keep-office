@@ -35,7 +35,7 @@ index 706e9e2..fb3aaee 100644
  
  extraVolumeMounts:
    - name: bureaublad-button-app
-@@ -263,6 +267,22 @@ extraVolumeMounts:
+@@ -263,6 +267,29 @@ extraVolumeMounts:
      mountPath: /var/www/html/custom_apps/bureaublad_button/js/script.js
      subPath: script.js
      readOnly: true
@@ -55,6 +55,13 @@ index 706e9e2..fb3aaee 100644
 +    mountPath: /var/www/html/custom_apps/meetcal/lib/Controller/MeetController.php
 +    subPath: MeetController.php
 +    readOnly: true
++  # Re-run the post-install occ script (idempotent) on image upgrades too:
++  # upgrades rsync fresh app code over the PVC, losing the user_oidc sed, and
++  # opcache.validate_timestamps=0 (nextcloud-php-cache.patch) means a sed
++  # applied to a serving pod is never picked up. Both hook dirs run in the
++  # entrypoint before PHP starts serving, so the fix is always cached fresh.
++  - name: post-install-dir
++    mountPath: /docker-entrypoint-hooks.d/post-upgrade
  
  extraDeploy:
    - apiVersion: v1
