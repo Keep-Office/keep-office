@@ -26,8 +26,11 @@ SIDECAR_PORT=8091
 [ -f "${HEADER_JS}" ] || { echo "missing ${HEADER_JS}"; exit 1; }
 
 # --- Static SPAs: overwrite the already-injected button file -----------------
+# patch_static <ns> <cm> <deploy...> — restarts exactly the deployments that
+# mount the configmap and waits for each, instead of blind-restarting the
+# whole namespace.
 patch_static() {
-  local ns="$1" cm="$2"
+  local ns="$1" cm="$2"; shift 2
   echo "==> [${ns}] injecting header into ${cm}"
   python3 - "$ns" "$cm" "$HEADER_JS" <<'PY' | kubectl apply -f -
 import json, subprocess, sys
@@ -38,7 +41,11 @@ for k in ("creationTimestamp","resourceVersion","uid","managedFields"):
     obj.get("metadata",{}).pop(k, None)
 print(json.dumps(obj))
 PY
-  kubectl -n "$ns" rollout restart deploy >/dev/null 2>&1 || true
+  local d
+  for d in "$@"; do
+    kubectl -n "$ns" rollout restart "deploy/${d}"
+    kubectl -n "$ns" rollout status "deploy/${d}" --timeout=180s
+  done
 }
 
 # --- Sidecar: proxy the app and sub_filter a same-origin <script> tag in -----
@@ -129,9 +136,20 @@ PY
       }]
     }}}}"
 
-  # Route the Service through the sidecar.
-  kubectl -n "$ns" patch svc "$svc" --type json \
-    -p "[{\"op\":\"replace\",\"path\":\"/spec/ports/0/targetPort\",\"value\":${SIDECAR_PORT}}]"
+  # Route the Service through the sidecar — by port name, not index, so a
+  # chart-side reorder of the ports list can't silently retarget the wrong one.
+  kubectl -n "$ns" get svc "$svc" -o json | python3 -c "
+import json, sys
+o = json.load(sys.stdin); port = ${SIDECAR_PORT}; hit = False
+for p in o['spec']['ports']:
+    if p.get('name') in ('http', None):
+        p['targetPort'] = port; hit = True; break
+if not hit:
+    sys.exit('no http port on service')
+for k in ('creationTimestamp','resourceVersion','uid','managedFields'):
+    o.get('metadata',{}).pop(k, None)
+print(json.dumps(o))
+" | kubectl apply -f -
 
   # Admit the sidecar port in the NetworkPolicy (base policies pin the app port).
   kubectl -n "$ns" get netpol "$netpol" -o json | python3 -c "
@@ -152,8 +170,8 @@ print(json.dumps(o))
 }
 
 echo "==> [1/2] Static SPAs (already inject a same-origin tag)"
-patch_static mb-meet    meet-static-files
-patch_static mb-element element-web-bureaublad-button
+patch_static mb-meet    meet-static-files             meet-frontend meet-static-nginx
+patch_static mb-element element-web-bureaublad-button element-web
 
 echo "==> [2/2] Sidecar apps"
 add_sidecar mb-nextcloud  nextcloud           nextcloud           8080 nextcloud
