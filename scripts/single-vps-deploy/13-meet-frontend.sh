@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: ./12-meet-frontend.sh
+# Usage: ./13-meet-frontend.sh
 # Builds the Open Suite-patched La Suite Meet frontend and points the live
 # frontend deployment at it.
 set -euo pipefail

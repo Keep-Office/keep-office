@@ -15,8 +15,10 @@ MASTER_PASSWORD="${3:?Usage: $0 <domain> <email> <master-password>}"
 OPEN_SUITE_DEMO_MODE="${OPEN_SUITE_DEMO_MODE:-false}"
 OPEN_SUITE_DEMO_USERNAME="${OPEN_SUITE_DEMO_USERNAME:-johndoe}"
 OPEN_SUITE_DEMO_PASSWORD="${OPEN_SUITE_DEMO_PASSWORD:-myStrongPassword123}"
-OPEN_SUITE_DEMO_ADMIN_USERNAME="${OPEN_SUITE_DEMO_ADMIN_USERNAME:-admin}"
-OPEN_SUITE_DEMO_ADMIN_PASSWORD="${OPEN_SUITE_DEMO_ADMIN_PASSWORD:-${MASTER_PASSWORD}}"
+# No fallback to MASTER_PASSWORD: when the admin password is unset, 01-deploy.sh
+# generates one and the login page never shows admin credentials.
+OPEN_SUITE_DEMO_ADMIN_USERNAME="${OPEN_SUITE_DEMO_ADMIN_USERNAME:-demoadmin}"
+OPEN_SUITE_DEMO_ADMIN_PASSWORD="${OPEN_SUITE_DEMO_ADMIN_PASSWORD:-}"
 export OPEN_SUITE_DEMO_MODE OPEN_SUITE_DEMO_USERNAME OPEN_SUITE_DEMO_PASSWORD
 export OPEN_SUITE_DEMO_ADMIN_USERNAME OPEN_SUITE_DEMO_ADMIN_PASSWORD
 
@@ -51,7 +53,8 @@ bash "${DIR}/08-open-suite-portal.sh"
 bash "${DIR}/09-portal-header.sh"
 bash "${DIR}/10-keycloak-login.sh"
 bash "${DIR}/11-element-web.sh"
-bash "${DIR}/12-meet-frontend.sh"
+bash "${DIR}/12-auth-gate.sh"
+bash "${DIR}/13-meet-frontend.sh"
 
 echo ""
 echo "############################################################"
